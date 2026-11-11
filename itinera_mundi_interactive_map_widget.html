@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Itinera Mundi - Mappa Interattiva Roma</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gold: {
+              300: '#F3E5AB',
+              400: '#E6C667',
+              500: '#D4AF37',
+              600: '#B8860B',
+              700: '#996515',
+            },
+            dark: {
+              900: '#0A0A0B',
+              800: '#121214',
+              700: '#1C1C20',
+              600: '#2A2A30'
+            }
+          },
+          fontFamily: {
+            serif: ['Cinzel', 'serif'],
+            sans: ['Plus Jakarta Sans', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background-color: #0A0A0B;
+      color: #F3E5AB;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      z-index: 1;
+      background: #0A0A0B;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      height: 4px;
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(18, 18, 20, 0.8);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #D4AF37;
+      border-radius: 4px;
+    }
+
+    /* Custom Leaflet Dark Marker Styles */
+    .custom-stage-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1C1C20 0%, #0A0A0B 100%);
+      border: 2px solid #D4AF37;
+      color: #D4AF37;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 13px;
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.4), inset 0 0 6px rgba(212, 175, 55, 0.2);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .custom-stage-icon.active-stage {
+      background: linear-gradient(135deg, #D4AF37 0%, #B8860B 100%);
+      color: #0A0A0B;
+      border-color: #FFFFFF;
+      box-shadow: 0 0 25px rgba(212, 175, 55, 0.9), 0 0 10px rgba(255, 255, 255, 0.6);
+      transform: scale(1.25);
+      z-index: 999 !important;
+    }
+
+    /* GPS Live Location Pulse Dot */
+    .user-location-marker {
+      width: 18px;
+      height: 18px;
+      background-color: #3B82F6;
+      border: 3px solid #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+      position: relative;
+    }
+
+    .user-location-marker::after {
+      content: '';
+      width: 42px;
+      height: 42px;
+      background-color: rgba(59, 130, 246, 0.35);
+      border-radius: 50%;
+      position: absolute;
+      top: -15px;
+      left: -15px;
+      animation: pulse 2s infinite ease-out;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(0.3);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
+    }
+
+    /* Custom Leaflet Controls */
+    .leaflet-control-zoom {
+      border: 1px solid rgba(212, 175, 55, 0.3) !important;
+      background: rgba(18, 18, 20, 0.85) !important;
+      backdrop-filter: blur(8px);
+      border-radius: 12px !important;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+    }
+
+    .leaflet-control-zoom-in, .leaflet-control-zoom-out {
+      background: transparent !important;
+      color: #D4AF37 !important;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2) !important;
+    }
+
+    .leaflet-control-zoom-in:hover, .leaflet-control-zoom-out:hover {
+      background: rgba(212, 175, 55, 0.15) !important;
+      color: #F3E5AB !important;
+    }
+
+    /* Polyline Glow Effect */
+    .leaflet-interactive {
+      filter: drop-shadow(0 0 6px rgba(212, 175, 55, 0.7));
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-gold-500 selection:text-dark-900">
+
+  <!-- Main Container -->
+  <div class="relative w-full h-full flex flex-col">
+    
+    <!-- Header Controls Overlay -->
+    <header class="absolute top-3 left-3 right-3 z-[1000] flex flex-col gap-2 pointer-events-none">
+      
+      <!-- Top Brand & GPS Bar -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="pointer-events-auto flex items-center gap-2 bg-dark-800/90 backdrop-blur-md border border-gold-500/30 px-3 py-2 rounded-xl shadow-2xl">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-gold-400 to-gold-600 flex items-center justify-center text-dark-900 font-serif font-bold text-xs shadow-md">
+            IM
+          </div>
+          <div>
+            <h1 class="font-serif font-bold text-gold-400 text-xs tracking-wider uppercase">Itinera Mundi</h1>
+            <p class="text-[10px] text-gray-400 font-medium">Roma Segreta • Live Map</p>
+          </div>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="pointer-events-auto flex items-center gap-2">
+          <!-- GPS Tracker Toggle Button -->
+          <button id="gpsBtn" onclick="toggleGPS()" class="h-10 px-3 bg-dark-800/90 backdrop-blur-md border border-gold-500/30 text-gold-400 hover:text-white rounded-xl shadow-2xl flex items-center gap-2 transition-all active:scale-95 text-xs font-semibold">
+            <i id="gpsIcon" class="fa-solid fa-crosshairs text-sm text-gold-500"></i>
+            <span id="gpsText" class="hidden sm:inline">Mia Posizione</span>
+          </button>
+
+          <!-- Reset Fit Route Button -->
+          <button onclick="fitFullRoute()" class="h-10 w-10 bg-dark-800/90 backdrop-blur-md border border-gold-500/30 text-gold-400 hover:text-white rounded-xl shadow-2xl flex items-center justify-center transition-all active:scale-95 text-xs font-semibold" title="Mostra tutto l'itinerario">
+            <i class="fa-solid fa-route text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Horizontal Stage Selector Carousel -->
+      <div class="pointer-events-auto w-full overflow-x-auto no-scrollbar py-1">
+        <div id="stageBadgesContainer" class="flex gap-2 min-w-max px-0.5">
+          <!-- Dynamically Generated Stage Buttons -->
+        </div>
+      </div>
+    </header>
+
+    <!-- Leaflet Map Canvas -->
+    <div id="map"></div>
+
+    <!-- Bottom Stage Info Drawer -->
+    <div class="absolute bottom-4 left-3 right-3 z-[1000] pointer-events-none">
+      <div id="drawer" class="pointer-events-auto bg-dark-800/95 backdrop-blur-md border border-gold-500/40 rounded-2xl p-4 shadow-2xl transition-all duration-300">
+        
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div class="flex items-center gap-2">
+            <span id="stageBadgeNumber" class="px-2 py-0.5 rounded-md bg-gold-500/20 border border-gold-500/40 text-gold-400 font-serif text-xs font-bold">
+              TAPPA 1
+            </span>
+            <span id="distanceBadge" class="text-xs text-gray-400 font-medium flex items-center gap-1">
+              <i class="fa-solid fa-person-walking text-gold-500"></i> <span id="distText">0 km</span>
+            </span>
+            <span id="timeBadge" class="text-xs text-gray-400 font-medium flex items-center gap-1">
+              <i class="fa-regular fa-clock text-gold-500"></i> <span id="timeText">0 min</span>
+            </span>
+          </div>
+
+          <!-- GPS distance indicator to next point -->
+          <div id="userDistContainer" class="hidden text-[11px] bg-blue-900/40 border border-blue-500/40 text-blue-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
+            <i class="fa-solid fa-location-arrow text-blue-400 animate-pulse"></i>
+            <span id="userDistText">--- m da te</span>
+          </div>
+        </div>
+
+        <h2 id="stageTitle" class="font-serif text-base font-bold text-white mb-1 tracking-wide">
+          Terrazza del Pincio
+        </h2>
+        
+        <p id="stageDesc" class="text-xs text-gray-300 line-clamp-2 mb-3 leading-relaxed">
+          Punto di partenza dell'avventura. Guarda la vista panoramica su Piazza del Popolo prima di sbloccare il primo enigma!
+        </p>
+
+        <!-- Bottom Action Row -->
+        <div class="flex items-center gap-2">
+          <!-- Next / Prev Controls -->
+          <button onclick="navigateStage(-1)" class="h-9 px-3 bg-dark-700 hover:bg-dark-600 border border-gold-500/20 text-gold-400 rounded-xl text-xs font-semibold flex items-center justify-center transition-all">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          
+          <!-- Native Google Maps Navigation Trigger -->
+          <a id="externalNavBtn" href="#" target="_blank" class="flex-1 h-9 bg-gradient-to-r from-gold-500 to-gold-600 hover:from-gold-400 hover:to-gold-500 text-dark-900 font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95">
+            <i class="fa-solid fa-diamond-turn-right text-sm"></i>
+            <span>Naviga con GPS Esterno</span>
+          </a>
+
+          <button onclick="navigateStage(1)" class="h-9 px-3 bg-dark-700 hover:bg-dark-600 border border-gold-500/20 text-gold-400 rounded-xl text-xs font-semibold flex items-center justify-center transition-all">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // -------------------------------------------------------------
+    // 1. DATA: 11 STAGES OF ITINERA MUNDI (ROME TREASURE HUNT)
+    // -------------------------------------------------------------
+    const itineraryStages = [
+      {
+        id: 1,
+        title: "Tappa 1: Terrazza del Pincio",
+        shortTitle: "Pincio",
+        lat: 41.9113,
+        lng: 12.4797,
+        desc: "Punto d'inizio panoramico sopra Piazza del Popolo. Da qui inizia la caccia ai segreti dell'antica Roma.",
+        distNext: "0.4 km",
+        timeNext: "5 min"
+      },
+      {
+        id: 2,
+        title: "Tappa 2: Piazza del Popolo",
+        shortTitle: "P.za Popolo",
+        lat: 41.9107,
+        lng: 12.4764,
+        desc: "Al centro della grande piazza sotto l'obelisco Flaminio. Cerca i simboli nascosti sulla base in marmo.",
+        distNext: "0.7 km",
+        timeNext: "9 min"
+      },
+      {
+        id: 3,
+        title: "Tappa 3: Via del Corso & San Carlo",
+        shortTitle: "Via del Corso",
+        lat: 41.9056,
+        lng: 12.4789,
+        desc: "Lungo l'arteria storica dei mercanti. Trova la facciata barocca e la targa commemorativa.",
+        distNext: "0.6 km",
+        timeNext: "8 min"
+      },
+      {
+        id: 4,
+        title: "Tappa 4: Pantheon",
+        shortTitle: "Pantheon",
+        lat: 41.8986,
+        lng: 12.4769,
+        desc: "Il tempio di tutti gli dei. Osserva l'oculo aperto e decifra l'iscrizione di Agrippa.",
+        distNext: "0.3 km",
+        timeNext: "4 min"
+      },
+      {
+        id: 5,
+        title: "Tappa 5: Piazza Navona",
+        shortTitle: "P.za Navona",
+        lat: 41.8992,
+        lng: 12.4731,
+        desc: "Tra le sculture del Bernini e la Fontana dei Quattro Fiumi. Individua il dettaglio della statua che guarda la chiesa.",
+        distNext: "0.8 km",
+        timeNext: "10 min"
+      },
+      {
+        id: 6,
+        title: "Tappa 6: Castel Sant'Angelo",
+        shortTitle: "Castel S.Angelo",
+        lat: 41.9031,
+        lng: 12.4663,
+        desc: "Sulla sponda del Tevere di fronte al Ponte degli Angeli. La fortezza dei Papi custodisce l'enigma del Passetto.",
+        distNext: "0.7 km",
+        timeNext: "9 min"
+      },
+      {
+        id: 7,
+        title: "Tappa 7: Piazza San Pietro",
+        shortTitle: "San Pietro",
+        lat: 41.9022,
+        lng: 12.4539,
+        desc: "Abbracciati dal colonnato del Bernini. Trova la piastrella del 'Centro del Colonnato' per l'effetto ottico.",
+        distNext: "1.2 km",
+        timeNext: "15 min"
+      },
+      {
+        id: 8,
+        title: "Tappa 8: Largo di Torre Argentina",
+        shortTitle: "Torre Argentina",
+        lat: 41.8956,
+        lng: 12.4770,
+        desc: "L'area sacra dei templi romani e rifugio dei gatti. Qui cadde Giulio Cesare alle Idi di Marzo.",
+        distNext: "0.4 km",
+        timeNext: "5 min"
+      },
+      {
+        id: 9,
+        title: "Tappa 9: Altare della Patria",
+        shortTitle: "Vittoriano",
+        lat: 41.8946,
+        lng: 12.4828,
+        desc: "Piazza Venezia e la maestosa scalinata. Decodifica la scritta dell'incensiere eterno.",
+        distNext: "0.5 km",
+        timeNext: "6 min"
+      },
+      {
+        id: 10,
+        title: "Tappa 10: Fori Imperiali & Foro Traiano",
+        shortTitle: "Fori Imperiali",
+        lat: 41.8945,
+        lng: 12.4853,
+        desc: "Camminando lungo i resti dell'Impero. Trova i bassorilievi della Colonna Traiana.",
+        distNext: "0.6 km",
+        timeNext: "8 min"
+      },
+      {
+        id: 11,
+        title: "Tappa 11: Colosseo (Finale)",
+        shortTitle: "Colosseo",
+        lat: 41.8902,
+        lng: 12.4922,
+        desc: "La meta finale sotto l'Anfiteatro Flavio! Inserisci la chiave finale nel form per sbloccare il diploma e il premio.",
+        distNext: "0 km",
+        timeNext: "0 min"
+      }
+    ];
+
+    // Global App State
+    let currentStageIndex = 0;
+    let map, markersGroup, routePolyline, userMarker = null;
+    let watchPositionId = null;
+    let isGpsActive = false;
+    let userCoords = null;
+
+    // -------------------------------------------------------------
+    // 2. MAP INITIALIZATION & DARK TILE MAP SETUP
+    // -------------------------------------------------------------
+    window.onload = function() {
+      initMap();
+      renderStageBadges();
+      selectStage(0);
+    };
+
+    function initMap() {
+      // Centered around Rome historical center
+      map = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([41.898, 12.476], 14);
+
+      // Add Zoom Control to Bottom-Right
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // Free CartoDB Dark Matter Basemap (High contrast dark look)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(map);
+
+      markersGroup = L.layerGroup().addTo(map);
+
+      // Draw Gold Glowing Polyline Path between all 11 stages
+      const routeCoordinates = itineraryStages.map(s => [s.lat, s.lng]);
+      
+      routePolyline = L.polyline(routeCoordinates, {
+        color: '#D4AF37',
+        weight: 4,
+        opacity: 0.85,
+        dashArray: '8, 6',
+        lineCap: 'round'
+      }).addTo(map);
+
+      // Add Markers for all 11 stages
+      itineraryStages.forEach((stage, idx) => {
+        const customIcon = L.divIcon({
+          className: 'custom-stage-icon-container',
+          html: `<div id="marker-icon-${idx}" class="custom-stage-icon w-8 h-8">${stage.id}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker([stage.lat, stage.lng], { icon: customIcon });
+        marker.on('click', () => selectStage(idx));
+        markersGroup.addLayer(marker);
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 3. UI STAGE RENDERERS & SELECTION LOGIC
+    // -------------------------------------------------------------
+    function renderStageBadges() {
+      const container = document.getElementById('stageBadgesContainer');
+      container.innerHTML = '';
+
+      itineraryStages.forEach((stage, idx) => {
+        const btn = document.createElement('button');
+        btn.id = `badge-btn-${idx}`;
+        btn.onclick = () => selectStage(idx);
+        btn.className = `px-3 py-1.5 rounded-xl border font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
+          idx === 0 
+            ? 'bg-gold-500 text-dark-900 border-gold-400 shadow-lg shadow-gold-500/20' 
+            : 'bg-dark-800/90 border-gold-500/20 text-gray-300 hover:border-gold-500/50'
+        }`;
+        
+        btn.innerHTML = `
+          <span class="font-serif font-bold">${stage.id}.</span>
+          <span>${stage.shortTitle}</span>
+        `;
+        container.appendChild(btn);
+      });
+    }
+
+    function selectStage(index) {
+      if (index < 0 || index >= itineraryStages.length) return;
+      
+      // Remove active class from old marker icon & badge
+      const prevIcon = document.getElementById(`marker-icon-${currentStageIndex}`);
+      const prevBadge = document.getElementById(`badge-btn-${currentStageIndex}`);
+      if (prevIcon) prevIcon.classList.remove('active-stage');
+      if (prevBadge) {
+        prevBadge.className = "px-3 py-1.5 rounded-xl border border-gold-500/20 bg-dark-800/90 text-gray-300 hover:border-gold-500/50 font-semibold text-xs transition-all whitespace-nowrap flex items-center gap-1.5";
+      }
+
+      // Update current index
+      currentStageIndex = index;
+      const targetStage = itineraryStages[currentStageIndex];
+
+      // Add active class to new marker icon & badge
+      const nextIcon = document.getElementById(`marker-icon-${currentStageIndex}`);
+      const nextBadge = document.getElementById(`badge-btn-${currentStageIndex}`);
+      if (nextIcon) nextIcon.classList.add('active-stage');
+      if (nextBadge) {
+        nextBadge.className = "px-3 py-1.5 rounded-xl border border-gold-400 bg-gold-500 text-dark-900 font-bold text-xs transition-all shadow-lg shadow-gold-500/20 whitespace-nowrap flex items-center gap-1.5 scale-105";
+        nextBadge.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+
+      // Pan map smooth to stage coordinates
+      map.flyTo([targetStage.lat, targetStage.lng], 16, {
+        animate: true,
+        duration: 1.2
+      });
+
+      // Update Drawer Information
+      document.getElementById('stageBadgeNumber').innerText = `TAPPA ${targetStage.id}`;
+      document.getElementById('stageTitle').innerText = targetStage.title;
+      document.getElementById('stageDesc').innerText = targetStage.desc;
+      document.getElementById('distText').innerText = targetStage.distNext;
+      document.getElementById('timeText').innerText = targetStage.timeNext;
+
+      // Update Native Google Maps Walking Navigation URL
+      const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${targetStage.lat},${targetStage.lng}&travelmode=walking`;
+      document.getElementById('externalNavBtn').setAttribute('href', googleMapsUrl);
+
+      // Recalculate User Distance if Geolocation is Active
+      updateUserDistanceToStage();
+    }
+
+    function navigateStage(direction) {
+      let newIdx = currentStageIndex + direction;
+      if (newIdx >= 0 && newIdx < itineraryStages.length) {
+        selectStage(newIdx);
+      }
+    }
+
+    function fitFullRoute() {
+      const bounds = routePolyline.getBounds();
+      map.fitBounds(bounds, { padding: [60, 60] });
+    }
+
+    // -------------------------------------------------------------
+    // 4. REAL-TIME GPS GEOLOCATION ENGINE
+    // -------------------------------------------------------------
+    function toggleGPS() {
+      if (!isGpsActive) {
+        startGPS();
+      } else {
+        stopGPS();
+      }
+    }
+
+    function startGPS() {
+      if (!navigator.geolocation) {
+        alert("La geolocalizzazione GPS non è supportata dal tuo browser.");
+        return;
+      }
+
+      const gpsBtn = document.getElementById('gpsBtn');
+      const gpsIcon = document.getElementById('gpsIcon');
+      
+      gpsBtn.classList.add('border-blue-500', 'text-blue-400');
+      gpsIcon.className = "fa-solid fa-spinner fa-spin text-sm text-blue-400";
+
+      watchPositionId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          userCoords = { lat: latitude, lng: longitude };
+
+          // Create or update Live Pulsing User Dot Marker
+          if (!userMarker) {
+            const userIcon = L.divIcon({
+              className: 'user-marker-container',
+              html: `<div class="user-location-marker"></div>`,
+              iconSize: [18, 18],
+              iconAnchor: [9, 9]
+            });
+            userMarker = L.marker([latitude, longitude], { icon: userIcon }).addTo(map);
+          } else {
+            userMarker.setLatLng([latitude, longitude]);
+          }
+
+          if (!isGpsActive) {
+            isGpsActive = true;
+            gpsIcon.className = "fa-solid fa-location-arrow text-sm text-blue-400 animate-pulse";
+            document.getElementById('userDistContainer').classList.remove('hidden');
+            map.flyTo([latitude, longitude], 17);
+          }
+
+          updateUserDistanceToStage();
+        },
+        (error) => {
+          console.error("GPS Error:", error);
+          alert("Impossibile accedere alla tua posizione GPS. Assicurati che i permessi di localizzazione siano attivi.");
+          stopGPS();
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+
+    function stopGPS() {
+      if (watchPositionId !== null) {
+        navigator.geolocation.clearWatch(watchPositionId);
+        watchPositionId = null;
+      }
+      if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
+      }
+      isGpsActive = false;
+      userCoords = null;
+
+      const gpsBtn = document.getElementById('gpsBtn');
+      const gpsIcon = document.getElementById('gpsIcon');
+      gpsBtn.classList.remove('border-blue-500', 'text-blue-400');
+      gpsIcon.className = "fa-solid fa-crosshairs text-sm text-gold-500";
+      document.getElementById('userDistContainer').classList.add('hidden');
+    }
+
+    // Haversine formula to compute distance between User and Active Stage
+    function updateUserDistanceToStage() {
+      if (!userCoords || !isGpsActive) return;
+
+      const target = itineraryStages[currentStageIndex];
+      const distMeters = calculateDistance(userCoords.lat, userCoords.lng, target.lat, target.lng);
+      
+      const userDistText = document.getElementById('userDistText');
+      if (distMeters > 1000) {
+        userDistText.innerText = `${(distMeters / 1000).toFixed(1)} km da te`;
+      } else {
+        userDistText.innerText = `${Math.round(distMeters)} m da te`;
+      }
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // metres
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+      return R * c;
+    }
+  </script>
+</body>
+</html>
